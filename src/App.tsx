@@ -4,11 +4,13 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { DataProvider } from './contexts/DataContext';
 import { LicenseProvider } from './contexts/LicenseContext';
+import { UserManagementProvider } from './contexts/UserManagementContext';
 import HomePage from './components/home/HomePage';
-import Login from './components/auth/Login';
+import UnifiedLogin from './components/auth/UnifiedLogin';
 import Dashboard from './components/dashboard/Dashboard';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
+import ProtectedRoute from './components/layout/ProtectedRoute';
 import InvoicesList from './components/invoices/InvoicesList';
 import CreateInvoice from './components/invoices/CreateInvoice';
 import QuotesList from './components/quotes/QuotesList';
@@ -17,6 +19,7 @@ import ClientsList from './components/clients/ClientsList';
 import ProductsList from './components/products/ProductsList';
 import Settings from './components/settings/Settings';
 import Reports from './components/reports/Reports';
+import UserManagement from './components/users/UserManagement';
 import LicenseAlert from './components/license/LicenseAlert';
 import UpgradePage from './components/license/UpgradePage';
 import ExpiryAlert from './components/license/ExpiryAlert';
@@ -38,7 +41,7 @@ function AppContent() {
       <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50">
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<Login />} />
+          <Route path="/login" element={<UnifiedLogin />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -59,18 +62,74 @@ function AppContent() {
         <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
         <main className="p-6">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/invoices" element={<InvoicesList />} />
-            <Route path="/invoices/create" element={<CreateInvoice />} />
-            <Route path="/quotes" element={<QuotesList />} />
-            <Route path="/quotes/create" element={<CreateQuote />} />
-            <Route path="/clients" element={<ClientsList />} />
-            <Route path="/products" element={<ProductsList />} />
-            <Route path="/stock-management" element={<StockManagement />} />
-            <Route path="/hr-management" element={<HRManagement />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/" element={
+              <ProtectedRoute requiredPermission="dashboard">
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard" element={
+              <ProtectedRoute requiredPermission="dashboard">
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/invoices" element={
+              <ProtectedRoute requiredPermission="invoices">
+                <InvoicesList />
+              </ProtectedRoute>
+            } />
+            <Route path="/invoices/create" element={
+              <ProtectedRoute requiredPermission="invoices">
+                <CreateInvoice />
+              </ProtectedRoute>
+            } />
+            <Route path="/quotes" element={
+              <ProtectedRoute requiredPermission="quotes">
+                <QuotesList />
+              </ProtectedRoute>
+            } />
+            <Route path="/quotes/create" element={
+              <ProtectedRoute requiredPermission="quotes">
+                <CreateQuote />
+              </ProtectedRoute>
+            } />
+            <Route path="/clients" element={
+              <ProtectedRoute requiredPermission="clients">
+                <ClientsList />
+              </ProtectedRoute>
+            } />
+            <Route path="/products" element={
+              <ProtectedRoute requiredPermission="products">
+                <ProductsList />
+              </ProtectedRoute>
+            } />
+            <Route path="/stock-management" element={
+              <ProtectedRoute requiredPermission="stockManagement">
+                <StockManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/hr-management" element={
+              <ProtectedRoute requiredPermission="hrManagement">
+                <HRManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/reports" element={
+              <ProtectedRoute requiredPermission="reports">
+                <Reports />
+              </ProtectedRoute>
+            } />
+            <Route path="/users" element={
+              <ProtectedRoute 
+                requiredPermission="settings"
+                fallbackMessage="Seuls les administrateurs peuvent gérer les utilisateurs."
+              >
+                <UserManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute requiredPermission="settings">
+                <Settings />
+              </ProtectedRoute>
+            } />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>
@@ -109,9 +168,11 @@ function App() {
       <LanguageProvider>
         <AuthProvider>
           <DataProvider>
-            <LicenseProvider>
-              <AppContent />
-            </LicenseProvider>
+            <UserManagementProvider>
+              <LicenseProvider>
+                <AppContent />
+              </LicenseProvider>
+            </UserManagementProvider>
           </DataProvider>
         </AuthProvider>
       </LanguageProvider>

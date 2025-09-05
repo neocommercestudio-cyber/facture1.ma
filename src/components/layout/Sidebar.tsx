@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useLicense } from '../../contexts/LicenseContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUserManagement } from '../../contexts/UserManagementContext';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -15,7 +16,8 @@ import {
   ChevronRight,
   FileCheck,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  UsersIcon
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,6 +30,7 @@ export default function Sidebar({ open, setOpen, onUpgrade }: SidebarProps) {
   const { t } = useLanguage();
   const { licenseType } = useLicense();
   const { user } = useAuth();
+  const { checkUserPermission } = useUserManagement();
 
   // Vérifier si l'abonnement Pro est actif et non expiré
   const isProActive = user?.company.subscription === 'pro' && user?.company.expiryDate && 
@@ -66,8 +69,13 @@ export default function Sidebar({ open, setOpen, onUpgrade }: SidebarProps) {
       path: '/hr-management',
       isPro: true 
     },
-  
-    
+    { 
+      icon: UsersIcon, 
+      label: 'Gestion Utilisateurs', 
+      path: '/users',
+      isPro: true,
+      adminOnly: true
+    },
     { icon: Settings, label: t('settings'), path: '/settings' },
   ];
 
@@ -105,11 +113,18 @@ export default function Sidebar({ open, setOpen, onUpgrade }: SidebarProps) {
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isProFeature = item.isPro;
+              const isAdminOnly = item.adminOnly;
               const canAccess = !isProFeature || isProActive;
+              const hasPermission = checkUserPermission(item.path.replace('/', '') as any) || 
+                (item.path === '/dashboard' && checkUserPermission('dashboard')) ||
+                (item.path === '/users' && checkUserPermission('settings'));
+              
+              // Vérifier les permissions spéciales pour les fonctionnalités admin
+              const canAccessAdminFeature = !isAdminOnly || (user?.email === user?.company?.ownerEmail);
               
               return (
                 <li key={item.path}>
-                  {canAccess ? (
+                  {canAccess && hasPermission && canAccessAdminFeature ? (
                     <NavLink
                       to={item.path}
                       className={({ isActive }) =>
@@ -129,21 +144,40 @@ export default function Sidebar({ open, setOpen, onUpgrade }: SidebarProps) {
                               PRO
                             </span>
                           )}
+                          {item.adminOnly && (
+                            <span className="text-xs bg-red-400 text-red-900 px-1.5 py-0.5 rounded-full font-bold">
+                              ADMIN
+                            </span>
+                          )}
                         </div>
                       )}
                     </NavLink>
                   ) : (
                     <button
-                      onClick={(e) => handleProFeatureClick(e, item.path)}
+                      onClick={(e) => {
+                        if (!canAccess) {
+                          handleProFeatureClick(e, item.path);
+                        } else if (!hasPermission || !canAccessAdminFeature) {
+                          e.preventDefault();
+                          alert('Vous n\'avez pas les permissions nécessaires pour accéder à cette section.');
+                        }
+                      }}
                       className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all duration-200 group text-gray-500 hover:bg-red-50 hover:text-red-600 cursor-pointer"
                     >
                       <Icon className="w-5 h-5 flex-shrink-0" />
                       {open && (
                         <div className="flex items-center space-x-2">
                           <span className="font-medium ">{item.label}</span>
-                          <span className="text-xs bg-red-800 text-red-900 px-1.5 py-0.5 rounded-full font-bold">
-                            🔒
-                          </span>
+                          {!canAccess && (
+                            <span className="text-xs bg-red-800 text-red-900 px-1.5 py-0.5 rounded-full font-bold">
+                              🔒
+                            </span>
+                          )}
+                          {!hasPermission && canAccess && (
+                            <span className="text-xs bg-orange-600 text-orange-900 px-1.5 py-0.5 rounded-full font-bold">
+                              ⛔
+                            </span>
+                          )}
                         </div>
                       )}
                     </button>

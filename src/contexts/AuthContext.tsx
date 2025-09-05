@@ -6,7 +6,7 @@ import {
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 interface Company {
@@ -111,10 +111,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setFirebaseUser(firebaseUser);
-        // Récupérer les données utilisateur depuis Firestore
+        
+        // D'abord, vérifier si c'est un propriétaire d'entreprise
         try {
           const userDoc = await getDoc(doc(db, 'entreprises', firebaseUser.uid));
           if (userDoc.exists()) {
+            // C'est un propriétaire d'entreprise (admin principal)
             const userData = userDoc.data();
             setUser({
               id: firebaseUser.uid,
@@ -147,6 +149,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             
             // Vérifier l'expiration de l'abonnement à chaque connexion
             await checkSubscriptionExpiry(firebaseUser.uid, userData);
+          } else {
+            // Sinon, chercher dans la table des utilisateurs
+            const usersQuery = query(
+              collection(db, 'users'),
+              where('email', '==', firebaseUser.email)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            
+            if (!usersSnapshot.empty) {
+              const userDocData = usersSnapshot.docs[0].data();
+              
+              // Récupérer les données de l'entreprise
+              const entrepriseDoc = await getDoc(doc(db, 'entreprises', userDocData.entrepriseId));
+              if (entrepriseDoc.exists()) {
+                const entrepriseData = entrepriseDoc.data();
+                
+                setUser({
+                  id: firebaseUser.uid,
+                  name: userDocData.name,
+                  email: firebaseUser.email || '',
+                  role: userDocData.role,
+                  company: {
+                    name: entrepriseData.name,
+                    ice: entrepriseData.ice,
+                    if: entrepriseData.if,
+                    rc: entrepriseData.rc,
+                    cnss: entrepriseData.cnss,
+                    address: entrepriseData.address,
+                    phone: entrepriseData.phone,
+                    logo: entrepriseData.logo,
+                    email: entrepriseData.email,
+                    signature: entrepriseData.signature || "",
+                    patente: entrepriseData.patente,
+                    website: entrepriseData.website,
+                    invoiceNumberingFormat: entrepriseData.invoiceNumberingFormat,
+                    invoicePrefix: entrepriseData.invoicePrefix,
+                    invoiceCounter: entrepriseData.invoiceCounter,
+                    lastInvoiceYear: entrepriseData.lastInvoiceYear,
+                    defaultTemplate: entrepriseData.defaultTemplate || 'template1',
+                    subscription: entrepriseData.subscription || 'free',
+                    subscriptionDate: entrepriseData.subscriptionDate,
+                    expiryDate: entrepriseData.expiryDate
+                  }
+                });
+              }
+            }
           }
         } catch (error) {
           console.error('Erreur lors de la récupération des données utilisateur:', error);

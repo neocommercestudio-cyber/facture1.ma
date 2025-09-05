@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { Link, useNavigate } from 'react-router-dom';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../../config/firebase';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Building2, Lock, Mail, ArrowLeft, UserPlus } from 'lucide-react';
+import { Building2, Lock, Mail, ArrowLeft, UserPlus, Users, Shield } from 'lucide-react';
 
-export default function Login() {
+export default function UnifiedLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showRegister, setShowRegister] = useState(false);
-  
-  const { login } = useAuth();
+  const navigate = useNavigate();
   const { language, setLanguage, t } = useLanguage();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -20,12 +21,80 @@ export default function Login() {
     setError('');
 
     try {
-      const success = await login(email, password);
-      if (!success) {
-        setError('Email ou mot de passe incorrect');
+      // Vérification spéciale pour l'admin système
+      if (email === 'admin@facture.ma' && password === 'Rahma1211?') {
+        localStorage.setItem('adminAuth', 'true');
+        navigate('/admin/dashboard');
+        return;
       }
-    } catch (err) {
-      setError('Erreur de connexion');
+
+      // Authentification Firebase
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+
+      // Vérifier d'abord si c'est un propriétaire d'entreprise (admin)
+      const entrepriseDoc = await getDoc(doc(db, 'entreprises', firebaseUser.uid));
+      
+      if (entrepriseDoc.exists()) {
+        // C'est un admin/propriétaire d'entreprise
+        navigate('/dashboard');
+        return;
+      }
+
+      // Sinon, chercher dans la table des utilisateurs
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('email', '==', email)
+      );
+      const usersSnapshot = await getDocs(usersQuery);
+
+      if (!usersSnapshot.empty) {
+        const userData = usersSnapshot.docs[0].data();
+        
+        // Vérifier si l'utilisateur est actif
+        if (!userData.isActive) {
+          setError('Votre compte a été désactivé. Contactez votre administrateur.');
+          return;
+        }
+
+        // Redirection selon le rôle
+        if (userData.role === 'admin') {
+          navigate('/dashboard');
+        } else {
+          // Utilisateur normal - redirection vers la première section autorisée
+          const permissions = userData.permissions;
+          if (permissions.dashboard) {
+            navigate('/dashboard');
+          } else if (permissions.invoices) {
+            navigate('/invoices');
+          } else if (permissions.quotes) {
+            navigate('/quotes');
+          } else if (permissions.clients) {
+            navigate('/clients');
+          } else if (permissions.products) {
+            navigate('/products');
+          } else if (permissions.stockManagement) {
+            navigate('/stock-management');
+          } else if (permissions.hrManagement) {
+            navigate('/hr-management');
+          } else if (permissions.reports) {
+            navigate('/reports');
+          } else {
+            navigate('/dashboard'); // Fallback
+          }
+        }
+      } else {
+        setError('Utilisateur non trouvé dans le système');
+      }
+    } catch (err: any) {
+      console.error('Erreur de connexion:', err);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        setError('Email ou mot de passe incorrect');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Format d\'email invalide');
+      } else {
+        setError('Erreur de connexion. Veuillez réessayer.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -36,7 +105,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 flex items-center justify-center px-4">
       {/* Bouton retour */}
       <Link
         to="/"
@@ -54,9 +123,9 @@ export default function Login() {
             </div>
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            {t('welcome')}
+            Connexion Facture.ma
           </h2>
-          <p className="text-gray-600">{t('loginSubtitle')}</p>
+          <p className="text-gray-600">Accès sécurisé pour tous les utilisateurs</p>
           
           {/* Language Toggle */}
           <div className="flex justify-center mt-4">
@@ -144,25 +213,47 @@ export default function Login() {
             {isLoading ? t('loading') : t('login')}
           </button>
 
-          <div className="text-center">
+          <div className="text-center space-y-3">
             <button
               type="button"
               onClick={() => setShowRegister(true)}
               className="inline-flex items-center space-x-2 text-teal-600 hover:text-teal-700 font-medium"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Créer un compte</span>
+              <span>Créer un compte entreprise</span>
             </button>
+
+            <div className="border-t border-gray-200 pt-3">
+              <Link
+                to="/admin/login"
+                className="inline-flex items-center space-x-2 text-red-600 hover:text-red-700 font-medium text-sm"
+              >
+                <Shield className="w-4 h-4" />
+                <span>Accès Administrateur Système</span>
+              </Link>
+            </div>
           </div>
         </form>
+
+        {/* Info sur les types de comptes */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2 text-blue-800 mb-2">
+            <Users className="w-4 h-4" />
+            <span className="text-sm font-medium">Types de comptes</span>
+          </div>
+          <div className="text-xs text-blue-700 space-y-1">
+            <p>• <strong>Propriétaire d'entreprise :</strong> Accès complet + gestion des utilisateurs</p>
+            <p>• <strong>Utilisateur :</strong> Accès limité selon les droits accordés</p>
+            <p>• <strong>Gestion multi-utilisateurs :</strong> Réservée aux comptes PRO (max 3 utilisateurs)</p>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-// Composant d'inscription
+// Composant d'inscription (inchangé)
 function RegisterForm({ onBack }: { onBack: () => void }) {
-  const { register } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -178,7 +269,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
     phone: '',
     address: '',
     logo: '',
-    email: '',
+    companyEmail: '',
     patente: '',
     website: ''
   });
@@ -201,14 +292,19 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
       return;
     }
 
-    if (!formData.companyName || !formData.ice || !formData.email || !formData.patente || !formData.website) {
+    if (!formData.companyName || !formData.ice || !formData.companyEmail || !formData.patente || !formData.website) {
       setError('Le nom de la société, l\'ICE, l\'email, la patente et le site web sont obligatoires');
       setIsLoading(false);
       return;
     }
 
     try {
-      const companyData = {
+      // Créer le compte propriétaire d'entreprise
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const userId = userCredential.user.uid;
+
+      // Créer l'entreprise
+      await setDoc(doc(db, 'entreprises', userId), {
         name: formData.companyName,
         ice: formData.ice,
         if: formData.if,
@@ -217,24 +313,59 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
         phone: formData.phone,
         address: formData.address,
         logo: formData.logo,
-        email: formData.email,
+        email: formData.companyEmail,
         patente: formData.patente,
-        website: formData.website
-      };
+        website: formData.website,
+        ownerEmail: formData.email,
+        ownerName: formData.email.split('@')[0],
+        subscription: 'free',
+        subscriptionDate: new Date().toISOString(),
+        expiryDate: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
 
-      const success = await register(formData.email, formData.password, companyData);
-      if (!success) {
+      // Créer l'utilisateur admin dans la table users
+      await addDoc(collection(db, 'users'), {
+        firebaseId: userId,
+        name: formData.email.split('@')[0],
+        email: formData.email,
+        role: 'admin',
+        permissions: {
+          dashboard: true,
+          invoices: true,
+          quotes: true,
+          clients: true,
+          products: true,
+          stockManagement: true,
+          hrManagement: true,
+          reports: true,
+          settings: true,
+        },
+        isActive: true,
+        entrepriseId: userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      // Redirection automatique après création
+      navigate('/dashboard');
+    } catch (err: any) {
+      console.error('Erreur lors de l\'inscription:', err);
+      if (err.code === 'auth/email-already-in-use') {
+        setError('Cette adresse email est déjà utilisée');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Le mot de passe doit contenir au moins 6 caractères');
+      } else {
         setError('Erreur lors de la création du compte');
       }
-    } catch (err) {
-      setError('Erreur lors de l\'inscription');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 flex items-center justify-center px-4 py-12">
       <Link
         to="/"
         className="fixed top-6 left-6 inline-flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-white/80 px-3 py-2 rounded-lg transition-all duration-200 backdrop-blur-sm"
@@ -251,7 +382,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
             </div>
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            Créer votre compte
+            Créer votre compte entreprise
           </h2>
           <p className="text-gray-600">Rejoignez Facture.ma et simplifiez votre gestion</p>
         </div>
@@ -418,8 +549,8 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
                 </label>
                 <input
                   type="email"
-                  name="email"
-                  value={formData.email}
+                  name="companyEmail"
+                  value={formData.companyEmail}
                   onChange={handleChange}
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
